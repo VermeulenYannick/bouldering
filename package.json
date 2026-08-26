@@ -1,0 +1,27 @@
+{
+  "name": "bouldering-training-log",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js",
+    "migrate:workouts": "node migrations/001_seed_workouts.js",
+    "migrate:reset-dev": "node migrations/002_reset_dev_data.js",
+    "migrate:init-security": "node migrations/003_init_security.js"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "express": "latest",
+    "mongodb": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "vite": "latest",
+    "dotenv": "latest",
+    "@simplewebauthn/browser": "13.3.0",
+    "@simplewebauthn/server": "13.3.2"
+  },
+  "devDependencies": {}
+}
