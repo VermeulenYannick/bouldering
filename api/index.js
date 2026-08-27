@@ -9,6 +9,18 @@ import {
 } from '@simplewebauthn/server';
 
 const app = express();
+
+// Vercel routes /api/* to this Express function. Strip the /api prefix
+// when it is still present so the existing Express routes continue to match.
+app.use((req, _res, next) => {
+  if (req.url === '/api') {
+    req.url = '/';
+  } else if (req.url.startsWith('/api/')) {
+    req.url = req.url.slice(4);
+  }
+  next();
+});
+
 app.use(express.json({ limit: '1mb' }));
 
 const PIN = process.env.APP_PIN;
@@ -155,7 +167,7 @@ app.get('/auth/passkey/login/options', async (req, res) => {
     const options = await generateAuthenticationOptions({
       rpID: RP_ID,
       userVerification: 'required',
-      allowCredentials: passkeys.map((p) => ({ id: p.id, transports: p.transports || undefined })),
+      allowCredentials: passkeys.map((p) => ({ id: p._id, transports: p.transports || undefined })),
     });
     const txId = makeId();
     await database.collection('webauthn_challenges').insertOne({ _id: txId, type: 'authentication', challenge: options.challenge, expiresAt: new Date(Date.now() + CHALLENGE_TTL_MS) });

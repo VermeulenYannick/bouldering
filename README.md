@@ -45,3 +45,19 @@ npm start
 Open `http://localhost:3000`.
 
 The first run asks for the PIN and then creates the first passkey. Subsequent logins require the passkey first and then the PIN.
+
+
+## Vercel deployment
+
+This project is configured with an explicit Vercel Node function for `api/index.js` and a Vite static build.
+
+Set these Production environment variables in Vercel:
+
+- `MONGODB_URI`
+- `MONGODB_DB`
+- `APP_PIN`
+- `WEBAUTHN_RP_NAME`
+- `WEBAUTHN_RP_ID` (the Vercel hostname only, without `https://`)
+- `WEBAUTHN_ORIGIN` (the full `https://...` origin)
+
+After the first successful deployment, run `npm run migrate:init-security` locally against the same MongoDB Atlas database.
