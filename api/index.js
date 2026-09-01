@@ -288,6 +288,18 @@ app.post('/auth/passkey/register/verify', requireAuth, async (req, res) => {
   }
 });
 
+app.get('/exercises', requireAuth, async (req, res) => {
+  try {
+    const type = String(req.query.type || 'lifting').toLowerCase();
+    const q = String(req.query.q || '').trim();
+    const collectionName = type === 'climbing' ? 'climbing_exercises' : 'lifting_exercises';
+    const database = await db();
+    const filter = q ? { name: { $regex: q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' } } : {};
+    const exercises = await database.collection(collectionName).find(filter).sort({ name: 1 }).limit(100).toArray();
+    res.json(exercises);
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Exercise catalog unavailable' }); }
+});
+
 app.get('/workouts', requireAuth, async (req, res) => {
   try {
     const database = await db();

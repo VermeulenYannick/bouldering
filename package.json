@@ -10,7 +10,8 @@
     "start": "node server.js",
     "migrate:workouts": "node migrations/001_seed_workouts.js",
     "migrate:reset-dev": "node migrations/002_reset_dev_data.js",
-    "migrate:init-security": "node migrations/003_init_security.js"
+    "migrate:init-security": "node migrations/003_init_security.js",
+    "migrate:exercises": "node migrations/004_seed_exercises.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
