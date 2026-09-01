@@ -107,3 +107,9 @@ textarea,.problem-row input{background:#1b1e24;border-color:#30343d;color:var(--
 /* Bouldering notes are multiline beta/notes fields. */
 .problem-inputs textarea { width:100%; background:#1b1e24; border:1px solid #30343d; border-radius:10px; padding:10px; font-size:15px; color:var(--ink); min-width:0; min-height:58px; resize:vertical; font-family:inherit; }
 .problem-inputs textarea:focus { outline:none; border-color:#626a77; box-shadow:0 0 0 2px rgba(255,255,255,.05); }
+
+/* Full Monday-Sunday calendar: days from adjacent months are visible but subdued. */
+.cell.outside-month{opacity:.4}
+.cell.outside-month .workout-type,.cell.outside-month .workout-intensity,.cell.outside-month .check{opacity:.75}
+.cell.outside-month.future{opacity:.4}
+.cell.outside-month.past{opacity:.28}
