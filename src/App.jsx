@@ -10,13 +10,16 @@ import PasskeyLogin from './components/auth/PasskeyLogin.jsx';
 import PasskeySetup from './components/auth/PasskeySetup.jsx';
 import Calendar from './components/Calendar.jsx';
 import Entry from './components/Entry.jsx';
+import WorkoutManager from './components/WorkoutManager.jsx';
+import WorkoutEditor from './components/WorkoutEditor.jsx';
+import ScheduleEditor from './components/ScheduleEditor.jsx';
 
 /**
  * Root application component.
  *
- * App owns cross-screen concerns only: authentication state, route state,
- * workout templates, and the shared local/server training-log state. Individual
- * screens and editors live in their own component modules.
+ * App owns cross-screen concerns only: authentication, URL routing, the shared
+ * training log, and the scheduled workout list. Workout-management screens
+ * perform their own CRUD requests so they remain isolated from logging logic.
  */
 export default function App() {
   const initialRoute = useMemo(() => routeFromLocation(), []);
@@ -46,22 +49,15 @@ export default function App() {
 
   const loggedIn = authStage === 'authenticated';
 
-  /** Load workout templates only after authentication succeeds. */
+  /** Load the effective scheduled workout templates used by the calendar and day editor. */
   useEffect(() => {
     if (!loggedIn) return;
     api('/workouts').then(setWorkouts).catch(() => setWorkouts([]));
   }, [loggedIn]);
 
-  useTrainingSync({
-    loggedIn,
-    localState,
-    setLocalState,
-    serverMeta,
-    setServerMeta,
-    setSyncState,
-  });
+  useTrainingSync({ loggedIn, localState, setLocalState, serverMeta, setServerMeta, setSyncState });
 
-  /** Apply a mutation to the local log and mark it dirty for debounced syncing. */
+  /** Apply a mutation to the local training log and mark it dirty for debounced syncing. */
   const updateLog = (mutator) => {
     const current = clone(loadLocal() || { logs: {} });
     current.logs = current.logs || {};
@@ -72,36 +68,38 @@ export default function App() {
     setSyncState('pending');
   };
 
-  /** Return a saved log for a date, or a virtual log based on the scheduled template. */
+  /** Return a stored date entry or a virtual entry based on the current weekly schedule. */
   const getLog = (key) => localState?.logs?.[key] || emptyLog(key, workouts);
 
-  /** Open a specific day using the URL-based SPA router. */
+  /** Navigate to a date without forcing a full browser reload. */
   const openDate = (key) => navigateTo(`/day/${key}`);
 
-  /** Return to the calendar route without causing a full page reload. */
+  /** Return to the calendar route. */
   const goCalendar = () => navigateTo('/');
 
   if (authStage === 'loading') return <div className="loading">Loading…</div>;
   if (authStage === 'passkey') return <PasskeyLogin onSuccess={() => setAuthStage('pin')} />;
   if (authStage === 'pin') return <PinScreen onSuccess={(needsSetup) => setAuthStage(needsSetup ? 'setup' : 'authenticated')} />;
   if (authStage === 'setup') return <PasskeySetup onSuccess={() => setAuthStage('authenticated')} />;
-  if (!workouts.length) return <div className="loading">Loading workouts…</div>;
+  if (!workouts.length && ['calendar', 'entry'].includes(route.screen)) return <div className="loading">Loading workouts…</div>;
+
+  if (route.screen === 'workouts') return <WorkoutManager onBack={goCalendar} />;
+  if (route.screen === 'workout-editor') return <WorkoutEditor workoutId={route.workoutId} onBack={() => navigateTo('/workouts')} />;
+  if (route.screen === 'schedule') return <ScheduleEditor onBack={goCalendar} />;
 
   if (route.screen === 'entry') {
     const date = route.date || dateKey();
-    return (
-      <Entry
-        key={date}
-        date={date}
-        log={getLog(date)}
-        workouts={workouts}
-        onBack={goCalendar}
-        onChange={(patch) => updateLog((state) => {
-          state.logs[date] = { ...getLog(date), ...patch, updatedAt: Date.now() };
-        })}
-        syncState={syncState}
-      />
-    );
+    return <Entry
+      key={date}
+      date={date}
+      log={getLog(date)}
+      workouts={workouts}
+      onBack={goCalendar}
+      onChange={(patch) => updateLog((state) => {
+        state.logs[date] = { ...getLog(date), ...patch, updatedAt: Date.now() };
+      })}
+      syncState={syncState}
+    />;
   }
 
   return <Calendar localState={localState} workouts={workouts} onDate={openDate} syncState={syncState} />;

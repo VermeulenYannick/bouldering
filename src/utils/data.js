@@ -25,7 +25,8 @@ export function hasMeaningfulData(value) {
  * creating a database record until the user actually changes something.
  */
 export function emptyLog(key, workouts) {
-  const workout = workouts.find((item) => item.dayOfWeek === localDateFromKey(key).getDay());
+  const dayOfWeek = localDateFromKey(key).getDay();
+  const workout = workouts.find((item) => Array.isArray(item.scheduleDays) ? item.scheduleDays.includes(dayOfWeek) : item.dayOfWeek === dayOfWeek);
   return {
     date: key,
     workoutId: workout?._id ?? null,

@@ -6,7 +6,7 @@ import StrengthExerciseCard from './StrengthExerciseCard.jsx';
 import ExercisePicker from './ExercisePicker.jsx';
 
 /** Render and manage a day's strength exercise plan, without mutating its template. */
-export default function StrengthForm({workout,value,setData,date,data}){
+export default function StrengthForm({workout,value,setData,date,data,exerciseType=EXERCISE_TYPES.LIFTING,showPlanToolbar=true}){
   const rawPlan=value('exercisePlan');
   const defaultPlan=useMemo(()=>workout.exercises.map(ex=>({
     key:ex.id,
@@ -114,13 +114,13 @@ export default function StrengthForm({workout,value,setData,date,data}){
   };
 
   return <>
-    <section className="exercise-plan-toolbar">
+    {showPlanToolbar && <section className="exercise-plan-toolbar">
       <div><strong>{workout.title}</strong><span>This plan is for {date} only. The workout template will not be changed.</span></div>
       <div className="exercise-actions">
         <button type="button" className="exercise-menu-button" onClick={addExercise}>＋ Add exercise</button>
         <button type="button" className="exercise-menu-button" onClick={resetPlan}>Reset day</button>
       </div>
-    </section>
+    </section>}
 
     {plan.map((item,index)=><StrengthExerciseCard
       key={item.key}
@@ -134,7 +134,7 @@ export default function StrengthForm({workout,value,setData,date,data}){
     />)}
 
     {picker&&<ExercisePicker
-      type={EXERCISE_TYPES.LIFTING}
+      type={exerciseType}
       title={picker.mode==='replace'?`Replace ${picker.item.name}`:'Add exercise'}
       onCancel={()=>setPicker(null)}
       onSelect={applyExercise}

@@ -11,6 +11,19 @@ export function routeFromLocation() {
     return { screen: 'entry', date: match[1] };
   }
 
+  if (path === '/workouts') {
+    return { screen: 'workouts', workoutId: null };
+  }
+
+  const workoutMatch = path.match(/^\/workouts\/(new|[^/]+)$/);
+  if (workoutMatch) {
+    return { screen: 'workout-editor', workoutId: decodeURIComponent(workoutMatch[1]) };
+  }
+
+  if (path === '/schedule') {
+    return { screen: 'schedule' };
+  }
+
   window.history.replaceState({}, '', '/');
   return { screen: 'calendar', date: null };
 }

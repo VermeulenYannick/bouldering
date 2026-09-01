@@ -3,9 +3,10 @@ import { DEFAULT_BOULDER_SCHEMA } from '../constants/app.js';
 import { api } from '../utils/api.js';
 import { localDateFromKey } from '../utils/dates.js';
 import { normalizeProblem, resultLabel } from '../utils/exercises.js';
+import StrengthForm from './StrengthForm.jsx';
 
 /** Render the bouldering blocks for a workout and persist edits through the parent day form. */
-export default function ClimbingForm({workout,value,setData,date}){
+export default function ClimbingForm({workout,value,setData,date,data}){
   const problemSchema = workout.blocks.find(block => block.kind === 'problems')?.problemSchema || DEFAULT_BOULDER_SCHEMA;
   const boulderGrades = problemSchema.grades || DEFAULT_BOULDER_SCHEMA.grades;
   const boulderResults = problemSchema.results || DEFAULT_BOULDER_SCHEMA.results;
@@ -54,6 +55,12 @@ export default function ClimbingForm({workout,value,setData,date}){
   };
 
   return <>
+    {Array.isArray(workout.exercises) && workout.exercises.length > 0 && <section className="climbing-exercise-section">
+      <div className="climbing-exercise-section-head">
+        <div><div className="eyebrow">CLIMBING EXERCISES</div><h2>Training exercises</h2></div>
+      </div>
+      <StrengthForm workout={{...workout, title: 'Climbing exercises'}} value={value} setData={setData} date={date} data={data || {}} exerciseType={EXERCISE_TYPES.CLIMBING} showPlanToolbar={false} />
+    </section>}
     <div className="climbing-header-action">
       <div><div className="eyebrow">BOULDERING SESSION</div><h2>{workout.title}</h2></div>
       <button type="button" className="last-time-button" onClick={openLastWorkout} disabled={loadingLast}>{loadingLast?'Loading…':'Last time'}</button>

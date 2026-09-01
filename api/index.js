@@ -319,12 +319,156 @@ app.get('/exercises', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Exercise catalog unavailable' }); }
 });
 
-/** Return active workout templates used by the calendar and day editor. */
+/**
+ * Return the reusable workout templates used by management screens.
+ * Schedule information is included only as metadata and does not mutate the template.
+ */
+app.get('/workout-templates', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const workouts = await database.collection('workout_definitions')
+      .find({ active: { $ne: false } })
+      .sort({ title: 1 })
+      .toArray();
+    return res.json(workouts);
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
+});
+
+/** Load one reusable workout template for the editor. */
+app.get('/workout-templates/:id', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const workout = await database.collection('workout_definitions').findOne({ _id: String(req.params.id), active: { $ne: false } });
+    if (!workout) return res.status(404).json({ error: 'Workout template not found' });
+    return res.json(workout);
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
+});
+
+/** Create a new reusable workout template. */
+app.post('/workout-templates', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const title = String(req.body?.title || '').trim();
+    const type = req.body?.type === 'climbing' ? 'climbing' : 'strength';
+    if (!title) return res.status(400).json({ error: 'Workout name is required' });
+
+    const id = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'workout'}_${makeId().slice(0, 10)}`;
+    const doc = {
+      _id: id,
+      version: 1,
+      title,
+      type,
+      color: ['red', 'yellow', 'green'].includes(req.body?.color) ? req.body.color : 'yellow',
+      description: String(req.body?.description || ''),
+      exercises: Array.isArray(req.body?.exercises) ? req.body.exercises : [],
+      blocks: Array.isArray(req.body?.blocks) ? req.body.blocks : [],
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    await database.collection('workout_definitions').insertOne(doc);
+    return res.status(201).json(doc);
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Could not create workout template' }); }
+});
+
+/** Update a reusable workout template without touching any date-specific logs. */
+app.put('/workout-templates/:id', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const id = String(req.params.id);
+    const current = await database.collection('workout_definitions').findOne({ _id: id, active: { $ne: false } });
+    if (!current) return res.status(404).json({ error: 'Workout template not found' });
+
+    const title = String(req.body?.title || '').trim();
+    if (!title) return res.status(400).json({ error: 'Workout name is required' });
+
+    const patch = {
+      title,
+      type: req.body?.type === 'climbing' ? 'climbing' : 'strength',
+      color: ['red', 'yellow', 'green'].includes(req.body?.color) ? req.body.color : 'yellow',
+      description: String(req.body?.description || ''),
+      exercises: Array.isArray(req.body?.exercises) ? req.body.exercises : [],
+      blocks: Array.isArray(req.body?.blocks) ? req.body.blocks : [],
+      version: Number(current.version || 1) + 1,
+      updatedAt: new Date(),
+    };
+    await database.collection('workout_definitions').updateOne({ _id: id }, { $set: patch });
+    return res.json({ ...current, ...patch });
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Could not update workout template' }); }
+});
+
+/** Archive a reusable workout and remove it from all weekly schedule slots. */
+app.delete('/workout-templates/:id', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const id = String(req.params.id);
+    const result = await database.collection('workout_definitions').updateOne({ _id: id }, { $set: { active: false, updatedAt: new Date() } });
+    if (!result.matchedCount) return res.status(404).json({ error: 'Workout template not found' });
+    await database.collection('workout_schedule').updateMany({ workoutId: id }, { $set: { workoutId: null, updatedAt: new Date() } });
+    return res.json({ ok: true });
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Could not archive workout template' }); }
+});
+
+/**
+ * Return the current Monday-Sunday schedule. If the schedule collection has
+ * not been migrated yet, derive the initial schedule from legacy dayOfWeek fields.
+ */
+app.get('/workout-schedule', requireAuth, async (req, res) => {
+  try {
+    const database = await db();
+    const collection = database.collection('workout_schedule');
+    const saved = await collection.find({}).sort({ dayOfWeek: 1 }).toArray();
+    if (!saved.length) {
+      const legacy = await database.collection('workout_definitions').find({ active: { $ne: false }, dayOfWeek: { $exists: true } }).toArray();
+      return res.json(Array.from({ length: 7 }, (_, dayOfWeek) => ({
+        dayOfWeek,
+        workoutId: legacy.find((workout) => Number(workout.dayOfWeek) === dayOfWeek)?._id || null,
+      })));
+    }
+    const byDay = new Map(saved.map((item) => [Number(item.dayOfWeek), item.workoutId || null]));
+    return res.json(Array.from({ length: 7 }, (_, dayOfWeek) => ({ dayOfWeek, workoutId: byDay.get(dayOfWeek) || null })));
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Could not load workout schedule' }); }
+});
+
+/** Assign one reusable workout template (or rest) to a weekday. */
+app.put('/workout-schedule/:dayOfWeek', requireAuth, async (req, res) => {
+  try {
+    const dayOfWeek = Number(req.params.dayOfWeek);
+    if (!Number.isInteger(dayOfWeek) || dayOfWeek < 0 || dayOfWeek > 6) return res.status(400).json({ error: 'Invalid weekday' });
+    const workoutId = req.body?.workoutId ? String(req.body.workoutId) : null;
+    const database = await db();
+    if (workoutId) {
+      const workout = await database.collection('workout_definitions').findOne({ _id: workoutId, active: { $ne: false } });
+      if (!workout) return res.status(400).json({ error: 'Workout template not found' });
+    }
+    await database.collection('workout_schedule').updateOne(
+      { _id: `weekday_${dayOfWeek}` },
+      { $set: { dayOfWeek, workoutId, updatedAt: new Date() }, $setOnInsert: { createdAt: new Date() } },
+      { upsert: true },
+    );
+    return res.json({ dayOfWeek, workoutId });
+  } catch (e) { console.error(e); return res.status(500).json({ error: 'Could not save workout schedule' }); }
+});
+
+/** Return active templates with the schedule days on which each is assigned. */
 app.get('/workouts', requireAuth, async (req, res) => {
   try {
     const database = await db();
-    const workouts = await database.collection('workout_definitions').find({ active: { $ne: false } }).sort({ dayOfWeek: 1, version: 1 }).toArray();
-    return res.json(workouts);
+    const templates = await database.collection('workout_definitions').find({ active: { $ne: false } }).sort({ title: 1 }).toArray();
+    const saved = await database.collection('workout_schedule').find({}).toArray();
+    const scheduleDays = new Map();
+    saved.forEach((item) => {
+      if (item.workoutId) {
+        const days = scheduleDays.get(item.workoutId) || [];
+        days.push(Number(item.dayOfWeek));
+        scheduleDays.set(item.workoutId, days);
+      }
+    });
+    const hasSchedule = saved.length > 0;
+    return res.json(templates.map((template) => {
+      const days = hasSchedule ? (scheduleDays.get(template._id) || []) : (template.dayOfWeek === undefined ? [] : [Number(template.dayOfWeek)]);
+      return { ...template, scheduleDays: days, dayOfWeek: days[0] };
+    }));
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 

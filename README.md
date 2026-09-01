@@ -44,3 +44,15 @@ npm run migrate:exercise-ids
 ```
 
 `migrate:exercise-ids` is a data migration that adds catalog IDs to the existing strength workout templates. It should not be confused with per-day exercise replacement: replacing or adding an exercise still writes only to that day's training log.
+
+## Workout management
+
+The authenticated app now exposes workout management at `/workouts` and the recurring weekly schedule at `/schedule` through the hamburger menu.
+
+Run the one-time schedule migration against the same MongoDB database as the app:
+
+```bash
+npm run migrate:workout-management
+```
+
+Workout templates remain in `workout_definitions`. The recurring weekday assignments are stored separately in `workout_schedule`, while date-specific edits continue to live in `training_logs`.
