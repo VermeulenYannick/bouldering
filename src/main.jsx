@@ -183,7 +183,12 @@ function Entry({date,log,workouts,onBack,onChange,syncState}){
   const workout=workoutId?workouts.find(w=>w._id===workoutId):null;
   const hasData=hasMeaningfulData(log.data||{});
   const setData=(path,value)=>{
-    const data=clone(log.data||{}); let obj=data; for(let i=0;i<path.length-1;i++){obj[path[i]]=obj[path[i]]||{};obj=obj[path[i]];} obj[path[path.length-1]]=value;
+    const data=path[0]==='__replace__' ? clone(value||{}) : clone(log.data||{});
+    if(path[0]!=='__replace__'){
+      let obj=data;
+      for(let i=0;i<path.length-1;i++){obj[path[i]]=obj[path[i]]||{};obj=obj[path[i]];}
+      obj[path[path.length-1]]=value;
+    }
     onChange({workoutId,workoutVersion:workout?.version ?? 1,data});
   };
   const value=(...path)=>path.reduce((o,k)=>o?.[k],log.data||{} ) ?? '';
@@ -205,7 +210,7 @@ function Entry({date,log,workouts,onBack,onChange,syncState}){
     onChange({workoutId:normalized,workoutVersion:nextWorkout?.version ?? 1,data:{}});
   };
   const cancelWorkoutChange=()=>setPendingWorkoutId(null);
-  return <main className="app"><header className="entry-head"><button className="back" onClick={onBack}>‹ Calendar</button><div className="date-title">{localDateFromKey(date).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div><div className="sync">{syncState==='pending'?'Unsaved':'Saved'}</div></header><section className="entry"><label className="select-label">Workout<select value={workoutId||''} onChange={e=>requestWorkoutChange(e.target.value)}><option value="">Rest / no workout</option>{workouts.map(w=><option key={w._id} value={w._id}>{w.title}</option>)}</select></label>{workout?.exercises?<StrengthForm workout={workout} value={value} setData={setData} date={date}/>:workout?<ClimbingForm workout={workout} value={value} setData={setData} date={date}/>:<div className="rest-card">No workout scheduled. Use the notes below for recovery, mobility, or anything else.</div>}<section className="mobility-card"><h2>Mobility</h2>{['Hamstrings','90/90 / hip opening','Hip flexors','Cossack / adductors','Ankles','Serratus / thoracic'].map((x,i)=><label className="check-row" key={x}><input type="checkbox" checked={Boolean(value('mobility',i))} onChange={e=>setData(['mobility',i],e.target.checked)}/><span>{x}</span></label>)}<textarea value={value('mobilityNotes')} onChange={e=>setData(['mobilityNotes'],e.target.value)} placeholder="Mobility notes…"/></section><section className="notes-card"><h2>Daily notes</h2><textarea value={value('dailyNotes')} onChange={e=>setData(['dailyNotes'],e.target.value)} placeholder="How did you feel? Pain, fatigue, sleep, observations…"/></section></section>{pendingWorkoutId!==null&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="change-workout-title"><div className="confirm-modal"><h2 id="change-workout-title">Change workout?</h2><p>This day already contains training data. Changing the workout will erase <strong>all data currently recorded for this day</strong>.</p><div className="modal-actions"><button className="modal-cancel" onClick={cancelWorkoutChange}>Cancel</button><button className="modal-danger" onClick={confirmWorkoutChange}>Change workout</button></div></div></div>}</main>
+  return <main className="app"><header className="entry-head"><button className="back" onClick={onBack}>‹ Calendar</button><div className="date-title">{localDateFromKey(date).toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric'})}</div><div className="sync">{syncState==='pending'?'Unsaved':'Saved'}</div></header><section className="entry"><label className="select-label">Workout<select value={workoutId||''} onChange={e=>requestWorkoutChange(e.target.value)}><option value="">Rest / no workout</option>{workouts.map(w=><option key={w._id} value={w._id}>{w.title}</option>)}</select></label>{workout?.exercises?<StrengthForm workout={workout} value={value} setData={setData} date={date} data={log.data||{}}/>:workout?<ClimbingForm workout={workout} value={value} setData={setData} date={date}/>:<div className="rest-card">No workout scheduled. Use the notes below for recovery, mobility, or anything else.</div>}<section className="mobility-card"><h2>Mobility</h2>{['Hamstrings','90/90 / hip opening','Hip flexors','Cossack / adductors','Ankles','Serratus / thoracic'].map((x,i)=><label className="check-row" key={x}><input type="checkbox" checked={Boolean(value('mobility',i))} onChange={e=>setData(['mobility',i],e.target.checked)}/><span>{x}</span></label>)}<textarea value={value('mobilityNotes')} onChange={e=>setData(['mobilityNotes'],e.target.value)} placeholder="Mobility notes…"/></section><section className="notes-card"><h2>Daily notes</h2><textarea value={value('dailyNotes')} onChange={e=>setData(['dailyNotes'],e.target.value)} placeholder="How did you feel? Pain, fatigue, sleep, observations…"/></section></section>{pendingWorkoutId!==null&&<div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="change-workout-title"><div className="confirm-modal"><h2 id="change-workout-title">Change workout?</h2><p>This day already contains training data. Changing the workout will erase <strong>all data currently recorded for this day</strong>.</p><div className="modal-actions"><button className="modal-cancel" onClick={cancelWorkoutChange}>Cancel</button><button className="modal-danger" onClick={confirmWorkoutChange}>Change workout</button></div></div></div>}</main>
 }
 
 function inferDefaultSets(ex){
@@ -342,6 +347,224 @@ function ClimbingForm({workout,value,setData,date}){
       </div>
     </div>}
   </>;
+}
+
+
+function StrengthForm({workout,value,setData,date,data}){
+  const rawPlan=value('exercisePlan');
+  const defaultPlan=useMemo(()=>workout.exercises.map(ex=>({
+    key:ex.id,
+    exerciseId:catalogIdForName(ex.name),
+    name:ex.name,
+    target:ex.target,
+    unit:ex.unit || 'kg',
+    defaultSets:inferDefaultSets(ex),
+    template:true,
+  })),[workout.exercises]);
+  const plan=Array.isArray(rawPlan) && rawPlan.length ? rawPlan : defaultPlan;
+  const [picker,setPicker]=useState(null);
+
+  const updateEntry=(item,patch)=>{
+    const exercises=clone(value('exercises')||{});
+    const previous=exercises[item.key] || { exerciseId:item.exerciseId, name:item.name, unit:item.unit || 'kg', sets:[] };
+    exercises[item.key]={...previous,...patch,exerciseId:item.exerciseId,name:item.name,unit:item.unit || 'kg'};
+    setData(['exercises'],exercises);
+  };
+
+  const replaceExercise=(item)=>setPicker({mode:'replace',slotKey:item.key,item});
+  const addExercise=()=>setPicker({mode:'add',item:null});
+
+  const applyExercise=(selected)=>{
+    if(!picker) return;
+    const dataExercises=clone(value('exercises')||{});
+    let nextPlan=clone(plan);
+    if(picker.mode==='replace'){
+      nextPlan=nextPlan.map(item=>item.key===picker.item.key ? {
+        ...item,
+        exerciseId:selected._id,
+        name:selected.name,
+        template:false,
+      } : item);
+      dataExercises[picker.item.key]={
+        exerciseId:selected._id,
+        name:selected.name,
+        unit:selected.unit || picker.item.unit || 'kg',
+        sets:Array.from({length:Math.max(1,Number(selected.defaultSets)||inferDefaultSets(picker.item))},()=>({weight:'',reps:''})),
+        notes:''
+      };
+    } else {
+      const key=`added_${selected._id}_${Date.now()}`;
+      const baseTarget=`${Math.max(1,Number(selected.defaultSets)||3)} sets`;
+      const added={key,exerciseId:selected._id,name:selected.name,target:baseTarget,unit:selected.unit || 'kg',defaultSets:selected.defaultSets || 3,template:false,added:true};
+      nextPlan.push(added);
+      dataExercises[key]={
+        exerciseId:selected._id,
+        name:selected.name,
+        unit:selected.unit || 'kg',
+        sets:Array.from({length:Math.max(1,Number(selected.defaultSets)||3)},()=>({weight:'',reps:''})),
+        notes:''
+      };
+    }
+    const nextData=clone(data||{});
+    nextData.exercisePlan=nextPlan;
+    nextData.exercises=dataExercises;
+    setData(['__replace__'],nextData);
+    setPicker(null);
+  };
+
+  const removeExercise=(item)=>{
+    const nextPlan=plan.filter(x=>x.key!==item.key);
+    const exercises=clone(value('exercises')||{});
+    delete exercises[item.key];
+    const nextData=clone(data||{});
+    nextData.exercisePlan=nextPlan;
+    nextData.exercises=exercises;
+    setData(['__replace__'],nextData);
+  };
+
+  const resetPlan=()=>{
+    const exercises=clone(value('exercises')||{});
+    Object.keys(exercises).forEach(k=>delete exercises[k]);
+    const nextData=clone(data||{});
+    nextData.exercisePlan=defaultPlan;
+    nextData.exercises=exercises;
+    setData(['__replace__'],nextData);
+  };
+
+  return <>
+    <section className="exercise-plan-toolbar">
+      <div><strong>{workout.title}</strong><span>This plan is for {date} only. The workout template will not be changed.</span></div>
+      <div className="exercise-actions">
+        <button type="button" className="exercise-menu-button" onClick={addExercise}>＋ Add exercise</button>
+        <button type="button" className="exercise-menu-button" onClick={resetPlan}>Reset day</button>
+      </div>
+    </section>
+
+    {plan.map((item,index)=><StrengthExerciseCard
+      key={item.key}
+      item={item}
+      index={index}
+      value={value}
+      updateEntry={updateEntry}
+      onReplace={()=>replaceExercise(item)}
+      onRemove={()=>removeExercise(item)}
+      canRemove={plan.length>1}
+      onLastTime={()=>{}}
+    />)}
+
+    {picker&&<ExercisePicker
+      type="lifting"
+      title={picker.mode==='replace'?`Replace ${picker.item.name}`:'Add exercise'}
+      onCancel={()=>setPicker(null)}
+      onSelect={applyExercise}
+    />}
+  </>;
+}
+
+function catalogIdForName(name){
+  const value=String(name||'').toLowerCase().trim();
+  const aliases={
+    'back squat':'back_squat',
+    'bench press':'bench_press',
+    'romanian deadlift':'romanian_deadlift',
+    'bulgarian split squat':'bulgarian_split_squat',
+    'chest-supported row':'chest_supported_row',
+    'push-up plus':'push_up',
+    'ab wheel':'ab_wheel',
+    'deadlift / rdl':'conventional_deadlift',
+    'overhead press':'overhead_press',
+    'front-foot elevated split squat':'front_foot_elevated_split_squat',
+    'neutral-grip pull-up':'neutral_grip_pull_up',
+    'hamstring curl':'hamstring_curl',
+    'serratus wall slide':'serratus_wall_slide',
+    'hanging knee raise':'hanging_knee_raise',
+  };
+  return aliases[value] || value.replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+}
+
+function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,canRemove}){
+  const raw=value('exercises',item.key);
+  const current=raw && typeof raw==='object' ? raw : null;
+  const defaultSets=Math.max(1,Number(item.defaultSets)||3);
+  const sets=Array.isArray(current?.sets) && current.sets.length ? current.sets.map(normalizeSet) : Array.from({length:defaultSets},()=>({weight:'',reps:''}));
+  const notes=current?.notes ?? '';
+  const changeSet=(i,field,val)=>{
+    const next=sets.map(normalizeSet);
+    next[i]={...next[i],[field]:val};
+    updateEntry(item,{sets:next});
+  };
+  const addSet=()=>updateEntry(item,{sets:[...sets,{weight:'',reps:''}]});
+  const removeSet=(i)=>{ if(sets.length<=1)return; updateEntry(item,{sets:sets.filter((_,idx)=>idx!==i)}); };
+  const copySet=(i)=>{
+    const source=sets[i];
+    const next=sets.map(normalizeSet);
+    next[i+1]={...source};
+    updateEntry(item,{sets:next});
+  };
+
+  return <section className="exercise-card">
+    <div className="exercise-head">
+      <div>
+        <h2>{index+1}. {item.name}</h2>
+        <span className="exercise-target">{item.target}</span>
+      </div>
+      <div className="exercise-actions">
+        <button type="button" className="exercise-menu-button" onClick={onReplace}>Replace</button>
+        <button type="button" className="exercise-menu-button danger" onClick={onRemove} disabled={!canRemove}>Remove</button>
+      </div>
+    </div>
+    <div className="sets-list">
+      <div className="set-header"><span>#</span><span>Weight / load</span><span>Reps</span><span></span><span></span></div>
+      {sets.map((set,i)=>{
+        const s=normalizeSet(set);
+        return <div className="set-row" key={i}>
+          <span className="set-number">{i+1}</span>
+          <input type="number" inputMode="decimal" step="0.5" value={s.weight} placeholder={item.unit==='reps'?'—':item.unit==='seconds'?'sec':'kg'} onChange={e=>changeSet(i,'weight',e.target.value)} />
+          <input type="number" inputMode="numeric" step="1" min="0" value={s.reps} placeholder={item.unit==='reps'?'reps':'reps'} onChange={e=>changeSet(i,'reps',e.target.value)} />
+          <button type="button" className="set-copy" onClick={()=>copySet(i)} disabled={i===sets.length-1}>Copy</button>
+          <button type="button" className="set-remove" onClick={()=>removeSet(i)} disabled={sets.length<=1}>×</button>
+        </div>;
+      })}
+    </div>
+    <button type="button" className="add-set" onClick={addSet}>＋ Add set</button>
+    <textarea value={notes} onChange={e=>updateEntry(item,{notes:e.target.value})} placeholder="Exercise notes…" />
+  </section>;
+}
+
+function ExercisePicker({type,title,onCancel,onSelect}){
+  const [query,setQuery]=useState('');
+  const [exercises,setExercises]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [error,setError]=useState('');
+
+  useEffect(()=>{
+    let alive=true;
+    setLoading(true); setError('');
+    api(`/exercises?type=${encodeURIComponent(type)}`)
+      .then(list=>{if(alive)setExercises(Array.isArray(list)?list:[]);})
+      .catch(e=>{if(alive)setError(e.message||'Could not load exercises.');})
+      .finally(()=>{if(alive)setLoading(false);});
+    return()=>{alive=false;};
+  },[type]);
+
+  const filtered=useMemo(()=>{
+    const q=query.trim().toLowerCase();
+    const source=q?exercises.filter(ex=>ex.name.toLowerCase().includes(q)):exercises;
+    return source.slice(0,50);
+  },[exercises,query]);
+
+  return <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="exercise-picker-title">
+    <div className="exercise-picker-modal">
+      <div className="modal-kicker">{type==='climbing'?'CLIMBING':'LIFTING'} EXERCISES</div>
+      <h2 id="exercise-picker-title">{title}</h2>
+      <input autoFocus className="exercise-search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Start typing an exercise…" />
+      {loading ? <div className="exercise-picker-empty">Loading exercise library…</div> : error ? <div className="exercise-picker-empty">{error}</div> : <div className="exercise-picker-results">
+        {filtered.map(ex=><button type="button" className="exercise-option" key={ex._id} onClick={()=>onSelect(ex)}><span>{ex.name}</span><small>{ex.defaultSets || 3} sets · {ex.unit || 'kg'}</small></button>)}
+        {!filtered.length&&<div className="exercise-picker-empty">No exercises match “{query}”.</div>}
+      </div>}
+      <button type="button" className="modal-cancel" onClick={onCancel}>Cancel</button>
+    </div>
+  </div>;
 }
 
 function resultLabel(value,results){ return results.find(r=>r.value===value)?.label || '—'; }
