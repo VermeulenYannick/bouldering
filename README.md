@@ -1,63 +1,46 @@
 # Bouldering Training Log
 
-## Authentication
+## Project structure
 
-Production authentication is two-stage:
+The frontend is intentionally split into small modules so `src/main.jsx` only mounts the app.
 
-1. A registered WebAuthn/passkey must authenticate successfully.
-2. The existing 6-digit PIN must then be entered.
-3. The server creates a 30-day MongoDB-backed session stored behind an HttpOnly cookie.
-
-On first setup, when no passkey exists yet, the PIN is accepted as the bootstrap factor and the app asks you to create the first passkey. After that, the passkey is required before the PIN on every new session.
-
-### Required environment variables
-
-```env
-MONGODB_URI=mongodb+srv://...
-MONGODB_DB=bouldering_log
-APP_PIN=123456
-WEBAUTHN_RP_NAME=Training Log
-WEBAUTHN_RP_ID=localhost
-WEBAUTHN_ORIGIN=http://localhost:3000
+```text
+src/
+├── main.jsx                 # React entry point
+├── App.jsx                  # Auth, routing, shared state orchestration
+├── components/
+│   ├── Calendar.jsx         # Calendar screen
+│   ├── Entry.jsx            # Single-day screen
+│   ├── ClimbingForm.jsx     # Bouldering workout editor
+│   ├── StrengthForm.jsx     # Strength workout/editor plan
+│   ├── StrengthExerciseCard.jsx
+│   ├── ExercisePicker.jsx
+│   └── auth/
+│       ├── PinScreen.jsx
+│       ├── PasskeyLogin.jsx
+│       └── PasskeySetup.jsx
+├── constants/
+│   └── app.js               # Browser configuration and UI definitions
+├── hooks/
+│   └── useTrainingSync.js   # Local-first, debounced server synchronization
+└── utils/
+    ├── api.js               # Backend request wrapper
+    ├── data.js              # Generic data helpers
+    ├── dates.js             # Date/time-zone helpers
+    ├── exercises.js         # Exercise/problem normalization helpers
+    ├── routing.js           # URL-based SPA routing
+    └── storage.js           # localStorage access
 ```
 
-For production replace `WEBAUTHN_RP_ID` and `WEBAUTHN_ORIGIN` with your HTTPS domain.
+Workout templates and exercise catalog data remain database-backed. Strength workout definitions now include `exerciseId` values matching the exercise catalog, so the frontend no longer needs a hard-coded exercise-name-to-ID dictionary.
 
-### Security migration
+## Database migration
 
-Run once:
+Run the existing migrations as appropriate, then run:
 
 ```bash
-npm run migrate:init-security
+npm run migrate:exercises
+npm run migrate:exercise-ids
 ```
 
-It is safe to run repeatedly. It creates the TTL indexes/collections used by sessions, passkey credentials, and WebAuthn challenges. It does not delete workout or training data.
-
-### Local run
-
-```bash
-npm install
-npm run migrate:init-security
-npm run build
-npm start
-```
-
-Open `http://localhost:3000`.
-
-The first run asks for the PIN and then creates the first passkey. Subsequent logins require the passkey first and then the PIN.
-
-
-## Vercel deployment
-
-This project is configured with an explicit Vercel Node function for `api/index.js` and a Vite static build.
-
-Set these Production environment variables in Vercel:
-
-- `MONGODB_URI`
-- `MONGODB_DB`
-- `APP_PIN`
-- `WEBAUTHN_RP_NAME`
-- `WEBAUTHN_RP_ID` (the Vercel hostname only, without `https://`)
-- `WEBAUTHN_ORIGIN` (the full `https://...` origin)
-
-After the first successful deployment, run `npm run migrate:init-security` locally against the same MongoDB Atlas database.
+`migrate:exercise-ids` is a data migration that adds catalog IDs to the existing strength workout templates. It should not be confused with per-day exercise replacement: replacing or adding an exercise still writes only to that day's training log.

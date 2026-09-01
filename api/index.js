@@ -35,6 +35,7 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const IS_SECURE = ORIGIN.startsWith('https://') || process.env.NODE_ENV === 'production';
 
 let clientPromise;
+/** Lazily create and reuse the MongoDB connection for this serverless instance. */
 async function db() {
   if (!MONGODB_URI) throw new Error('MONGODB_URI is not configured');
   if (!clientPromise) {
@@ -44,24 +45,30 @@ async function db() {
   return clientPromise;
 }
 
+/** Generate a cryptographically random identifier for sessions and WebAuthn transactions. */
 function makeId() {
   return crypto.randomBytes(32).toString('hex');
 }
+/** Produce the stable internal WebAuthn user identifier for the single app owner. */
 function userIdBytes() {
   return crypto.createHash('sha256').update('owner-training-log').digest();
 }
+/** Build a Set-Cookie header with the security flags used by the application. */
 function cookie(name, value, maxAge, { httpOnly = true, sameSite = 'Lax', secure = IS_SECURE } = {}) {
   return `${name}=${value}; Path=/; ${httpOnly ? 'HttpOnly; ' : ''}${secure ? 'Secure; ' : ''}SameSite=${sameSite}; Max-Age=${Math.max(0, Math.floor(maxAge / 1000))}`;
 }
+/** Build an expired cookie header that removes an existing application cookie. */
 function clearCookie(name, { httpOnly = true, sameSite = 'Lax', secure = IS_SECURE } = {}) {
   return cookie(name, '', 0, { httpOnly, sameSite, secure });
 }
+/** Extract one named cookie from the incoming request's Cookie header. */
 function parseCookie(req, name) {
   const raw = req.headers.cookie || '';
   const part = raw.split(';').map((v) => v.trim()).find((v) => v.startsWith(`${name}=`));
   return part ? part.slice(name.length + 1) : null;
 }
 
+/** Load and optionally require a valid authenticated session from MongoDB. */
 async function getSession(req, required = true) {
   const id = parseCookie(req, 'session');
   if (!id) {
@@ -77,6 +84,7 @@ async function getSession(req, required = true) {
   return session;
 }
 
+/** Express middleware that blocks protected routes unless a valid session exists. */
 async function requireAuth(req, res, next) {
   try {
     req.session = await getSession(req, true);
@@ -86,6 +94,7 @@ async function requireAuth(req, res, next) {
   }
 }
 
+/** Require the short-lived session created immediately after successful passkey verification. */
 async function requirePreauth(req) {
   const id = parseCookie(req, 'preauth');
   if (!id) throw new Error('PASSKEY_REQUIRED');
@@ -95,10 +104,12 @@ async function requirePreauth(req) {
   return session;
 }
 
+/** Load all registered passkey credentials for the single app owner. */
 async function getPasskeys(database) {
   return database.collection('passkeys').find({ owner: 'owner' }).toArray();
 }
 
+/** Report authentication state so the frontend can choose the correct security gate. */
 app.get('/auth/status', async (req, res) => {
   try {
     const database = await db();
@@ -111,6 +122,7 @@ app.get('/auth/status', async (req, res) => {
   }
 });
 
+/** Return the current authenticated session metadata to the client. */
 app.get('/auth/me', async (req, res) => {
   try {
     const session = await getSession(req, true);
@@ -120,6 +132,7 @@ app.get('/auth/me', async (req, res) => {
   }
 });
 
+/** Verify the PIN after passkey pre-auth and create a long-lived authenticated session. */
 app.post('/auth/login', async (req, res) => {
   if (!PIN) return res.status(500).json({ error: 'APP_PIN is not configured' });
   const supplied = String(req.body?.pin || '');
@@ -147,6 +160,7 @@ app.post('/auth/login', async (req, res) => {
   }
 });
 
+/** Revoke the current authenticated session and clear auth cookies. */
 app.post('/auth/logout', async (req, res) => {
   try {
     const id = parseCookie(req, 'session');
@@ -159,6 +173,7 @@ app.post('/auth/logout', async (req, res) => {
   res.json({ ok: true });
 });
 
+/** Create and store the WebAuthn challenge used to start passkey authentication. */
 app.get('/auth/passkey/login/options', async (req, res) => {
   try {
     const database = await db();
@@ -179,6 +194,7 @@ app.get('/auth/passkey/login/options', async (req, res) => {
   }
 });
 
+/** Verify a WebAuthn assertion and convert it into a short-lived pre-auth session. */
 app.post('/auth/passkey/login/verify', async (req, res) => {
   try {
     const txId = parseCookie(req, 'webauthn_tx');
@@ -219,6 +235,7 @@ app.post('/auth/passkey/login/verify', async (req, res) => {
   }
 });
 
+/** Create the WebAuthn registration challenge for adding a new owner credential. */
 app.get('/auth/passkey/register/options', requireAuth, async (req, res) => {
   try {
     const database = await db();
@@ -246,6 +263,7 @@ app.get('/auth/passkey/register/options', requireAuth, async (req, res) => {
   }
 });
 
+/** Verify and persist a newly registered passkey credential. */
 app.post('/auth/passkey/register/verify', requireAuth, async (req, res) => {
   try {
     const txId = parseCookie(req, 'webauthn_tx');
@@ -288,6 +306,7 @@ app.post('/auth/passkey/register/verify', requireAuth, async (req, res) => {
   }
 });
 
+/** Query the appropriate exercise catalog for the replace/add exercise picker. */
 app.get('/exercises', requireAuth, async (req, res) => {
   try {
     const type = String(req.query.type || 'lifting').toLowerCase();
@@ -300,6 +319,7 @@ app.get('/exercises', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Exercise catalog unavailable' }); }
 });
 
+/** Return active workout templates used by the calendar and day editor. */
 app.get('/workouts', requireAuth, async (req, res) => {
   try {
     const database = await db();
@@ -308,6 +328,7 @@ app.get('/workouts', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
+/** Return the latest complete owner training log used for synchronization. */
 app.get('/logs/latest', requireAuth, async (req, res) => {
   try {
     const database = await db();
@@ -316,6 +337,7 @@ app.get('/logs/latest', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
+/** Find the most recent previous bouldering entry for a specific workout template. */
 app.get('/logs/bouldering/:workoutId', requireAuth, async (req, res) => {
   const { workoutId } = req.params;
   const before = String(req.query.before || '9999-12-31');
@@ -331,6 +353,7 @@ app.get('/logs/bouldering/:workoutId', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
+/** Find the most recent logged strength exercise entry for the requested catalog exercise. */
 app.get('/logs/exercise/:exerciseId', requireAuth, async (req, res) => {
   const { exerciseId } = req.params;
   const before = String(req.query.before || '9999-12-31');
@@ -345,6 +368,7 @@ app.get('/logs/exercise/:exerciseId', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
+/** Persist the complete local training state when it is newer than the server copy. */
 app.put('/logs', requireAuth, async (req, res) => {
   const payload = req.body;
   if (!payload || typeof payload.updatedAt !== 'number' || !payload.logs) return res.status(400).json({ error: 'Invalid payload' });

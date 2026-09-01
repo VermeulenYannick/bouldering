@@ -11,7 +11,8 @@
     "migrate:workouts": "node migrations/001_seed_workouts.js",
     "migrate:reset-dev": "node migrations/002_reset_dev_data.js",
     "migrate:init-security": "node migrations/003_init_security.js",
-    "migrate:exercises": "node migrations/004_seed_exercises.js"
+    "migrate:exercises": "node migrations/004_seed_exercises.js",
+    "migrate:exercise-ids": "node migrations/005_add_exercise_ids_to_workouts.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
