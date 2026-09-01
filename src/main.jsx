@@ -25,14 +25,35 @@ async function api(path, options={}) {
   return res.json();
 }
 
+function routeFromLocation() {
+  const path = window.location.pathname.replace(/\/+$/, '') || '/';
+  if (path === '/' || path === '/calendar') return { screen: 'calendar', date: null };
+  const match = path.match(/^\/(?:day|entry)\/(\d{4}-\d{2}-\d{2})$/);
+  if (match) return { screen: 'entry', date: match[1] };
+  window.history.replaceState({}, '', '/');
+  return { screen: 'calendar', date: null };
+}
+
+function navigateTo(path, replace = false) {
+  const method = replace ? 'replaceState' : 'pushState';
+  window.history[method]({}, '', path);
+  window.dispatchEvent(new PopStateEvent('popstate'));
+}
+
 function App(){
+  const initialRoute = useMemo(() => routeFromLocation(), []);
   const [authStage,setAuthStage]=useState('loading');
-  const [screen,setScreen]=useState('calendar');
-  const [selectedDate,setSelectedDate]=useState(dateKey());
+  const [route,setRoute]=useState(initialRoute);
   const [localState,setLocalState]=useState(()=>loadLocal());
   const [serverMeta,setServerMeta]=useState(null);
   const [syncState,setSyncState]=useState('');
   const [workouts,setWorkouts]=useState([]);
+
+  useEffect(()=>{
+    const onPopState=()=>setRoute(routeFromLocation());
+    window.addEventListener('popstate',onPopState);
+    return()=>window.removeEventListener('popstate',onPopState);
+  },[]);
 
   useEffect(()=>{
     api('/auth/status').then(status=>{
@@ -96,16 +117,31 @@ function App(){
     saveLocal(current); setLocalState(current); setSyncState('pending');
   };
   const getLog=(key)=>localState?.logs?.[key]||emptyLog(key,workouts);
-  const openDate=(key)=>{setSelectedDate(key);setScreen('entry')};
+  const openDate=(key)=>navigateTo(`/day/${key}`);
+  const goCalendar=()=>navigateTo('/');
 
   if(authStage==='loading') return <div className="loading">Loading…</div>;
   if(authStage==='passkey') return <PasskeyLogin onSuccess={()=>setAuthStage('pin')}/>;
   if(authStage==='pin') return <PinScreen onSuccess={(needsSetup)=>setAuthStage(needsSetup?'setup':'authenticated')}/>;
   if(authStage==='setup') return <PasskeySetup onSuccess={()=>setAuthStage('authenticated')}/>;
   if(!workouts.length) return <div className="loading">Loading workouts…</div>;
-  return screen==='calendar'
-    ? <Calendar localState={localState} workouts={workouts} onDate={openDate} onEntry={()=>setScreen('entry')} syncState={syncState}/>
-    : <Entry key={selectedDate} date={selectedDate} log={getLog(selectedDate)} workouts={workouts} onBack={()=>setScreen('calendar')} onChange={(patch)=>updateLog(state=>{state.logs[selectedDate]={...getLog(selectedDate),...patch,updatedAt:Date.now()};})} syncState={syncState}/>;
+
+  if(route.screen==='entry'){
+    const date=route.date || dateKey();
+    return <Entry
+      key={date}
+      date={date}
+      log={getLog(date)}
+      workouts={workouts}
+      onBack={goCalendar}
+      onChange={(patch)=>updateLog(state=>{
+        state.logs[date]={...getLog(date),...patch,updatedAt:Date.now()};
+      })}
+      syncState={syncState}
+    />;
+  }
+
+  return <Calendar localState={localState} workouts={workouts} onDate={openDate} syncState={syncState}/>;
 }
 
 function PinScreen({onSuccess}){
@@ -317,8 +353,8 @@ function ClimbingForm({workout,value,setData,date}){
                 <option value="">—</option>
                 {boulderResults.map(result=><option key={result.value} value={result.value}>{result.label}</option>)}
               </select></label>
-              <label><span>Tries</span><input type="number" inputMode="numeric" min="0" step="1" value={p.tries} onChange={e=>updateProblem(block,i,'tries',e.target.value)} /></label>
-              <label className="problem-notes"><span>Notes</span><input value={p.notes} onChange={e=>updateProblem(block,i,'notes',e.target.value)} placeholder="Beta / notes" /></label>
+              <label><span>Tries</span><input type="number" inputMode="numeric" min="0" step="1" value={p.tries} onFocus={e=>e.currentTarget.select()} onChange={e=>updateProblem(block,i,'tries',e.target.value)} /></label>
+              <label className="problem-notes"><span>Notes</span><textarea rows="2" value={p.notes} onChange={e=>updateProblem(block,i,'notes',e.target.value)} placeholder="Beta / notes" /></label>
             </div>
           </div>;
         })}
@@ -364,11 +400,29 @@ function StrengthForm({workout,value,setData,date,data}){
   const plan=Array.isArray(rawPlan) && rawPlan.length ? rawPlan : defaultPlan;
   const [picker,setPicker]=useState(null);
 
+  useEffect(()=>{
+    const key=value('lastEditedExerciseKey');
+    if(!key) return;
+    let frame1=0;
+    let frame2=0;
+    frame1=requestAnimationFrame(()=>{
+      frame2=requestAnimationFrame(()=>{
+        const target=Array.from(document.querySelectorAll('[data-exercise-key]')).find(el=>el.dataset.exerciseKey===key);
+        if(target) target.scrollIntoView({behavior:'auto',block:'center'});
+      });
+    });
+    return()=>{cancelAnimationFrame(frame1); cancelAnimationFrame(frame2);};
+  },[]);
+
   const updateEntry=(item,patch)=>{
     const exercises=clone(value('exercises')||{});
     const previous=exercises[item.key] || { exerciseId:item.exerciseId, name:item.name, unit:item.unit || 'kg', sets:[] };
     exercises[item.key]={...previous,...patch,exerciseId:item.exerciseId,name:item.name,unit:item.unit || 'kg'};
-    setData(['exercises'],exercises);
+    const nextData=clone(data||{});
+    nextData.exercises=exercises;
+    nextData.lastEditedExerciseKey=item.key;
+    nextData.lastEditedExerciseAt=Date.now();
+    setData(['__replace__'],nextData);
   };
 
   const replaceExercise=(item)=>setPicker({mode:'replace',slotKey:item.key,item});
@@ -408,6 +462,8 @@ function StrengthForm({workout,value,setData,date,data}){
     const nextData=clone(data||{});
     nextData.exercisePlan=nextPlan;
     nextData.exercises=dataExercises;
+    nextData.lastEditedExerciseKey = picker.mode==='replace' ? picker.item.key : nextPlan[nextPlan.length-1]?.key;
+    nextData.lastEditedExerciseAt = Date.now();
     setData(['__replace__'],nextData);
     setPicker(null);
   };
@@ -502,7 +558,7 @@ function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,c
     updateEntry(item,{sets:next});
   };
 
-  return <section className="exercise-card">
+  return <section className="exercise-card" data-exercise-key={item.key}>
     <div className="exercise-head">
       <div>
         <h2>{index+1}. {item.name}</h2>
