@@ -131,6 +131,7 @@ export default function StrengthForm({workout,value,setData,date,data,exerciseTy
       onReplace={()=>replaceExercise(item)}
       onRemove={()=>removeExercise(item)}
       canRemove={plan.length>1}
+      date={date}
     />)}
 
     {picker&&<ExercisePicker

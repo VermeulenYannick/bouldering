@@ -1,14 +1,42 @@
-import React from 'react';
-import { clone } from '../utils/data.js';
+import React, { useState } from 'react';
+import { api } from '../utils/api.js';
 import { normalizeSet } from '../utils/exercises.js';
 
 /** Render one editable strength exercise and the sets/notes belonging to it. */
-export default function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,canRemove}){
+export default function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,canRemove,date}){
   const raw=value('exercises',item.key);
   const current=raw && typeof raw==='object' ? raw : null;
   const defaultSets=Math.max(1,Number(item.defaultSets)||3);
   const sets=Array.isArray(current?.sets) && current.sets.length ? current.sets.map(normalizeSet) : Array.from({length:defaultSets},()=>({weight:'',reps:''}));
   const notes=current?.notes ?? '';
+  const [lastWorkout,setLastWorkout]=useState(null);
+  const [loadingLast,setLoadingLast]=useState(false);
+  const [lastError,setLastError]=useState('');
+
+  // Load the most recent completed entry for this exercise before the current day.
+  // The API searches historical logs by the catalog exercise ID, so replacements
+  // and normal template exercises can use the same comparison mechanism.
+  const openLastWorkout=async()=>{
+    setLoadingLast(true);
+    setLastError('');
+    try {
+      const result=await api(`/logs/exercise/${encodeURIComponent(item.exerciseId)}?before=${encodeURIComponent(date)}`);
+      if(!result){
+        setLastWorkout(null);
+        setLastError('No previous entry found for this exercise.');
+      } else {
+        setLastWorkout(result);
+      }
+    } catch (error) {
+      setLastWorkout(null);
+      setLastError(error.message || 'Could not load the previous workout.');
+    } finally {
+      setLoadingLast(false);
+    }
+  };
+
+  // Close the historical comparison modal without changing today's workout data.
+  const closeLastWorkout=()=>{setLastWorkout(null);setLastError('');};
   // Update one field in one set and persist it through the parent strength form.
   const changeSet=(i,field,val)=>{
     const next=sets.map(normalizeSet);
@@ -34,6 +62,7 @@ export default function StrengthExerciseCard({item,index,value,updateEntry,onRep
         <span className="exercise-target">{item.target}</span>
       </div>
       <div className="exercise-actions">
+        <button type="button" className="last-time-button" onClick={openLastWorkout} disabled={loadingLast}>{loadingLast?'Loading…':'Last time'}</button>
         <button type="button" className="exercise-menu-button" onClick={onReplace}>Replace</button>
         <button type="button" className="exercise-menu-button danger" onClick={onRemove} disabled={!canRemove}>Remove</button>
       </div>
