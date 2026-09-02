@@ -344,6 +344,14 @@ app.get('/workout-templates/:id', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
+/** Validate that every exercise in a workout template carries a stable catalog ID. */
+function validateExerciseIds(type, exercises) {
+  if (!Array.isArray(exercises)) return { ok: true };
+  if (type !== 'strength') return { ok: true };
+  const invalid = exercises.find((exercise) => !exercise?.exerciseId || typeof exercise.exerciseId !== 'string' || !exercise.exerciseId.trim());
+  return invalid ? { ok: false, error: 'Every gym exercise must have a catalog exerciseId.' } : { ok: true };
+}
+
 /** Create a new reusable workout template. */
 app.post('/workout-templates', requireAuth, async (req, res) => {
   try {
@@ -351,6 +359,9 @@ app.post('/workout-templates', requireAuth, async (req, res) => {
     const title = String(req.body?.title || '').trim();
     const type = req.body?.type === 'climbing' ? 'climbing' : 'strength';
     if (!title) return res.status(400).json({ error: 'Workout name is required' });
+    const exercises = Array.isArray(req.body?.exercises) ? req.body.exercises : [];
+    const exerciseValidation = validateExerciseIds(type, exercises);
+    if (!exerciseValidation.ok) return res.status(400).json({ error: exerciseValidation.error });
 
     const id = `${title.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'workout'}_${makeId().slice(0, 10)}`;
     const doc = {
@@ -359,8 +370,9 @@ app.post('/workout-templates', requireAuth, async (req, res) => {
       title,
       type,
       color: ['red', 'yellow', 'green'].includes(req.body?.color) ? req.body.color : 'yellow',
+      intensity: ['hard', 'moderate', 'easy'].includes(req.body?.intensity) ? req.body.intensity : ({ red: 'hard', yellow: 'moderate', green: 'easy' }[req.body?.color] || 'moderate'),
       description: String(req.body?.description || ''),
-      exercises: Array.isArray(req.body?.exercises) ? req.body.exercises : [],
+      exercises,
       blocks: Array.isArray(req.body?.blocks) ? req.body.blocks : [],
       active: true,
       createdAt: new Date(),
@@ -381,13 +393,18 @@ app.put('/workout-templates/:id', requireAuth, async (req, res) => {
 
     const title = String(req.body?.title || '').trim();
     if (!title) return res.status(400).json({ error: 'Workout name is required' });
+    const exercises = Array.isArray(req.body?.exercises) ? req.body.exercises : [];
+    const type = req.body?.type === 'climbing' ? 'climbing' : 'strength';
+    const exerciseValidation = validateExerciseIds(type, exercises);
+    if (!exerciseValidation.ok) return res.status(400).json({ error: exerciseValidation.error });
 
     const patch = {
       title,
-      type: req.body?.type === 'climbing' ? 'climbing' : 'strength',
+      type,
       color: ['red', 'yellow', 'green'].includes(req.body?.color) ? req.body.color : 'yellow',
+      intensity: ['hard', 'moderate', 'easy'].includes(req.body?.intensity) ? req.body.intensity : ({ red: 'hard', yellow: 'moderate', green: 'easy' }[req.body?.color] || 'moderate'),
       description: String(req.body?.description || ''),
-      exercises: Array.isArray(req.body?.exercises) ? req.body.exercises : [],
+      exercises,
       blocks: Array.isArray(req.body?.blocks) ? req.body.blocks : [],
       version: Number(current.version || 1) + 1,
       updatedAt: new Date(),
@@ -497,19 +514,83 @@ app.get('/logs/bouldering/:workoutId', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
 });
 
-/** Find the most recent logged strength exercise entry for the requested catalog exercise. */
+/**
+ * Find the most recent previous strength entry for a specific catalog exercise
+ * at the same workout intensity as the current session.
+ *
+ * Historical logs that do not contain a stable exerciseId are intentionally
+ * ignored. This prevents accidental comparisons caused by renamed exercises,
+ * old slot keys, or fuzzy name matching. The workout intensity is resolved
+ * from the logged workout template, so a hard squat is never compared with a
+ * moderate/easy squat.
+ */
 app.get('/logs/exercise/:exerciseId', requireAuth, async (req, res) => {
   const { exerciseId } = req.params;
   const before = String(req.query.before || '9999-12-31');
+  const requestedIntensity = String(req.query.intensity || '').trim().toLowerCase();
+
+  if (!exerciseId) return res.status(400).json({ error: 'Exercise ID is required' });
+
   try {
     const database = await db();
     const latest = await database.collection('training_logs').findOne({ _id: 'owner_latest' });
     const logs = latest?.payload?.logs || {};
-    const matches = Object.entries(logs).filter(([date, log]) => date < before && log?.data?.exercises?.[exerciseId]).sort(([a], [b]) => b.localeCompare(a));
+
+    // Resolve the intensity of every workout template that appears in the log.
+    // Intensity is a first-class template property; color is only retained as
+    // a legacy fallback for older templates that pre-date the intensity field.
+    const workoutIds = [...new Set(Object.values(logs)
+      .map((log) => log?.workoutId)
+      .filter(Boolean)
+      .map(String))];
+
+    const definitions = workoutIds.length
+      ? await database.collection('workout_definitions')
+          .find({ _id: { $in: workoutIds }, type: 'strength' })
+          .project({ _id: 1, intensity: 1, color: 1 })
+          .toArray()
+      : [];
+
+    const intensityByWorkoutId = new Map(definitions.map((workout) => [
+      String(workout._id),
+      String(workout.intensity || ({ red: 'hard', yellow: 'moderate', green: 'easy' }[workout.color] || '')).toLowerCase(),
+    ]));
+
+    const matches = Object.entries(logs)
+      .filter(([date, log]) => {
+        if (date >= before || !log || log.workoutId == null) return false;
+
+        // Only compare against strength workouts at the requested intensity.
+        const logIntensity = intensityByWorkoutId.get(String(log.workoutId));
+        if (!logIntensity || !requestedIntensity || logIntensity !== requestedIntensity) return false;
+
+        const exercises = log.data?.exercises;
+        if (!exercises || typeof exercises !== 'object') return false;
+
+        // Stable-ID-only comparison. Legacy entries without exerciseId are ignored.
+        return Object.values(exercises).some((entry) => entry?.exerciseId === exerciseId);
+      })
+      .sort(([a], [b]) => b.localeCompare(a));
+
     if (!matches.length) return res.json(null);
+
     const [date, log] = matches[0];
-    return res.json({ date, workoutId: log.workoutId, workoutVersion: log.workoutVersion, entry: log.data.exercises[exerciseId] });
-  } catch (e) { console.error(e); return res.status(500).json({ error: 'Database error' }); }
+    const entry = Object.values(log.data?.exercises || {})
+      .find((item) => item?.exerciseId === exerciseId);
+
+    if (!entry) return res.json(null);
+
+    return res.json({
+      date,
+      workoutId: log.workoutId,
+      workoutVersion: log.workoutVersion,
+      intensity: intensityByWorkoutId.get(String(log.workoutId)),
+      entry,
+    });
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Database error' });
+  }
 });
 
 /** Persist the complete local training state when it is newer than the server copy. */

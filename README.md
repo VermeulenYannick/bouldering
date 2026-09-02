@@ -56,3 +56,8 @@ npm run migrate:workout-management
 ```
 
 Workout templates remain in `workout_definitions`. The recurring weekday assignments are stored separately in `workout_schedule`, while date-specific edits continue to live in `training_logs`.
+
+
+### Workout intensity migration
+
+Run `npm run migrate:workout-intensity` once to add stable hard/moderate/easy intensity values to existing workout templates. Historical training logs are not modified.

@@ -13,7 +13,7 @@ import HamburgerMenu from './HamburgerMenu.jsx';
 export default function WorkoutEditor({ workoutId, onBack }) {
   const isNew = workoutId === 'new';
   const [form, setForm] = useState(() => ({
-    _id: '', title: '', type: 'strength', color: 'yellow', description: '', exercises: [], blocks: [], version: 1,
+    _id: '', title: '', type: 'strength', color: 'yellow', intensity: 'moderate', description: '', exercises: [], blocks: [], version: 1,
   }));
   const [loading, setLoading] = useState(!isNew);
   const [saving, setSaving] = useState(false);
@@ -29,7 +29,8 @@ export default function WorkoutEditor({ workoutId, onBack }) {
         _id: data._id,
         title: data.title || '',
         type: data.type || 'strength',
-        color: data.color || 'yellow',
+        color: data.color || ({ hard: 'red', moderate: 'yellow', easy: 'green' }[data.intensity] || 'yellow'),
+        intensity: data.intensity || ({ red: 'hard', yellow: 'moderate', green: 'easy' }[data.color] || 'moderate'),
         description: data.description || '',
         exercises: Array.isArray(data.exercises) ? data.exercises : [],
         blocks: Array.isArray(data.blocks) ? data.blocks : [],
@@ -111,6 +112,7 @@ export default function WorkoutEditor({ workoutId, onBack }) {
         title: form.title.trim(),
         type: form.type,
         color: form.color,
+        intensity: form.intensity,
         description: form.description.trim(),
         exercises: form.exercises,
         blocks: form.blocks,
@@ -160,7 +162,7 @@ export default function WorkoutEditor({ workoutId, onBack }) {
       <div className="editor-grid">
         <label>Workout name<input value={form.title} onChange={(e) => setField('title', e.target.value)} placeholder="e.g. Full Body A" /></label>
         <label>Type<select value={form.type} onChange={(e) => setField('type', e.target.value)}><option value="strength">Gym</option><option value="climbing">Bouldering</option></select></label>
-        <label>Intensity<select value={form.color} onChange={(e) => setField('color', e.target.value)}><option value="red">Hard</option><option value="yellow">Moderate</option><option value="green">Easy</option></select></label>
+        <label>Intensity<select value={form.intensity} onChange={(e) => { const intensity=e.target.value; const color={hard:'red',moderate:'yellow',easy:'green'}[intensity]; setForm(current=>({...current,intensity,color})); }}><option value="hard">Hard</option><option value="moderate">Moderate</option><option value="easy">Easy</option></select></label>
         <label>Description<textarea rows="2" value={form.description} onChange={(e) => setField('description', e.target.value)} placeholder="What is this workout for?" /></label>
       </div>
     </section>

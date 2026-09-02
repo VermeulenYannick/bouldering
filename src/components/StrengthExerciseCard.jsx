@@ -3,7 +3,7 @@ import { api } from '../utils/api.js';
 import { normalizeSet } from '../utils/exercises.js';
 
 /** Render one editable strength exercise and the sets/notes belonging to it. */
-export default function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,canRemove,date}){
+export default function StrengthExerciseCard({item,index,value,updateEntry,onReplace,onRemove,canRemove,date,workoutIntensity}){
   const raw=value('exercises',item.key);
   const current=raw && typeof raw==='object' ? raw : null;
   const defaultSets=Math.max(1,Number(item.defaultSets)||3);
@@ -13,14 +13,15 @@ export default function StrengthExerciseCard({item,index,value,updateEntry,onRep
   const [loadingLast,setLoadingLast]=useState(false);
   const [lastError,setLastError]=useState('');
 
-  // Load the most recent completed entry for this exercise before the current day.
-  // The API searches historical logs by the catalog exercise ID, so replacements
-  // and normal template exercises can use the same comparison mechanism.
+  // Load the most recent completed entry for this catalog exercise before the current day.
+  // The lookup is strict: the server matches only the stable exerciseId and the
+  // same workout intensity, so a hard squat cannot be compared with a moderate squat.
   const openLastWorkout=async()=>{
     setLoadingLast(true);
     setLastError('');
     try {
-      const result=await api(`/logs/exercise/${encodeURIComponent(item.exerciseId)}?before=${encodeURIComponent(date)}`);
+      const intensityQuery = workoutIntensity ? `&intensity=${encodeURIComponent(workoutIntensity)}` : '';
+      const result=await api(`/logs/exercise/${encodeURIComponent(item.exerciseId)}?before=${encodeURIComponent(date)}${intensityQuery}`);
       if(!result){
         setLastWorkout(null);
         setLastError('No previous entry found for this exercise.');

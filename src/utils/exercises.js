@@ -26,3 +26,8 @@ export function normalizeProblem(problem) {
 export function resultLabel(value, results) {
   return results.find((result) => result.value === value)?.label || '—';
 }
+
+/** Return true only when an exercise entry carries a stable catalog identifier. */
+export function hasStableExerciseId(entry) {
+  return Boolean(entry && typeof entry.exerciseId === 'string' && entry.exerciseId.trim());
+}

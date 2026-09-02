@@ -14,7 +14,7 @@ const STANDARD_BOULDERING_SCHEMA = {
 
 const workouts = [
   {
-    _id: 'spray_limit_v1', version: 1, dayOfWeek: 1, day: 'Monday', title: 'Spray Wall — Limit', type: 'climbing', color: 'red', description: 'Limit bouldering + finger strength',
+    _id: 'spray_limit_v1', version: 1, dayOfWeek: 1, day: 'Monday', title: 'Spray Wall — Limit', type: 'climbing', color: 'red', intensity: 'hard', description: 'Limit bouldering + finger strength',
     blocks: [
       { id: 'warmup', title: 'Warm-up', kind: 'notes', fields: [{ id: 'notes', label: 'Notes', type: 'textarea' }] },
       { id: 'limit', title: 'Limit problems', kind: 'problems', count: 5, problemSchema: STANDARD_BOULDERING_SCHEMA },
@@ -22,7 +22,7 @@ const workouts = [
     ]
   },
   {
-    _id: 'full_body_a_v1', version: 1, dayOfWeek: 2, day: 'Tuesday', title: 'Full Body A', type: 'strength', color: 'yellow', description: 'Full-body strength',
+    _id: 'full_body_a_v1', version: 1, dayOfWeek: 2, day: 'Tuesday', title: 'Full Body A', type: 'strength', color: 'yellow', intensity: 'moderate', description: 'Full-body strength',
     exercises: [
       { id: 'squat', exerciseId: 'back_squat', name: 'Back squat', target: '3 × 4–6', unit: 'kg' },
       { id: 'bench', exerciseId: 'bench_press', name: 'Bench press', target: '3 × 4–6', unit: 'kg' },
@@ -34,7 +34,7 @@ const workouts = [
     ]
   },
   {
-    _id: 'full_body_b_v1', version: 1, dayOfWeek: 4, day: 'Thursday', title: 'Full Body B', type: 'strength', color: 'yellow', description: 'Full-body strength',
+    _id: 'full_body_b_v1', version: 1, dayOfWeek: 4, day: 'Thursday', title: 'Full Body B', type: 'strength', color: 'yellow', intensity: 'moderate', description: 'Full-body strength',
     exercises: [
       { id: 'deadlift', exerciseId: 'conventional_deadlift', name: 'Deadlift / RDL', target: '2 × 3–5', unit: 'kg' },
       { id: 'ohp', exerciseId: 'overhead_press', name: 'Overhead press', target: '3 × 5–8', unit: 'kg' },
@@ -46,7 +46,7 @@ const workouts = [
     ]
   },
   {
-    _id: 'set_moderate_v1', version: 1, dayOfWeek: 5, day: 'Friday', title: 'Set Bouldering — Moderate', type: 'climbing', color: 'yellow', description: 'Technique / moderate volume',
+    _id: 'set_moderate_v1', version: 1, dayOfWeek: 5, day: 'Friday', title: 'Set Bouldering — Moderate', type: 'climbing', color: 'yellow', intensity: 'moderate', description: 'Technique / moderate volume',
     blocks: [
       { id: 'warmup', title: 'Warm-up', kind: 'problems', count: 6, problemSchema: STANDARD_BOULDERING_SCHEMA },
       { id: 'technique', title: 'Technique problems', kind: 'problems', count: 8, problemSchema: STANDARD_BOULDERING_SCHEMA },
@@ -54,7 +54,7 @@ const workouts = [
     ]
   },
   {
-    _id: 'set_light_v1', version: 1, dayOfWeek: 6, day: 'Saturday', title: 'Set Bouldering — Light', type: 'climbing', color: 'green', description: 'Easy volume / movement',
+    _id: 'set_light_v1', version: 1, dayOfWeek: 6, day: 'Saturday', title: 'Set Bouldering — Light', type: 'climbing', color: 'green', intensity: 'easy', description: 'Easy volume / movement',
     blocks: [
       { id: 'warmup', title: 'Warm-up', kind: 'problems', count: 5, problemSchema: STANDARD_BOULDERING_SCHEMA },
       { id: 'volume', title: 'Easy / moderate volume', kind: 'problems', count: 12, problemSchema: STANDARD_BOULDERING_SCHEMA },

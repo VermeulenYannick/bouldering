@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { EXERCISE_TYPES } from '../constants/app.js';
 import { clone } from '../utils/data.js';
-import { inferDefaultSets } from '../utils/exercises.js';
+import { inferDefaultSets, hasStableExerciseId } from '../utils/exercises.js';
 import StrengthExerciseCard from './StrengthExerciseCard.jsx';
 import ExercisePicker from './ExercisePicker.jsx';
 
@@ -10,7 +10,7 @@ export default function StrengthForm({workout,value,setData,date,data,exerciseTy
   const rawPlan=value('exercisePlan');
   const defaultPlan=useMemo(()=>workout.exercises.map(ex=>({
     key:ex.id,
-    exerciseId:ex.exerciseId || ex.id,
+    exerciseId:ex.exerciseId,
     name:ex.name,
     target:ex.target,
     unit:ex.unit || 'kg',
@@ -37,8 +37,10 @@ export default function StrengthForm({workout,value,setData,date,data,exerciseTy
   // Merge an exercise-level edit into this date's data and mark the exercise as the last edited.
   const updateEntry=(item,patch)=>{
     const exercises=clone(value('exercises')||{});
-    const previous=exercises[item.key] || { exerciseId:item.exerciseId, name:item.name, unit:item.unit || 'kg', sets:[] };
-    exercises[item.key]={...previous,...patch,exerciseId:item.exerciseId,name:item.name,unit:item.unit || 'kg'};
+    const exerciseId = String(item.exerciseId || '').trim();
+    if (!hasStableExerciseId({ exerciseId })) return;
+    const previous=exercises[item.key] || { exerciseId, name:item.name, unit:item.unit || 'kg', sets:[] };
+    exercises[item.key]={...previous,...patch,exerciseId,name:item.name,unit:item.unit || 'kg'};
     const nextData=clone(data||{});
     nextData.exercises=exercises;
     nextData.lastEditedExerciseKey=item.key;
@@ -132,6 +134,7 @@ export default function StrengthForm({workout,value,setData,date,data,exerciseTy
       onRemove={()=>removeExercise(item)}
       canRemove={plan.length>1}
       date={date}
+      workoutIntensity={workout.intensity || ({red:'hard',yellow:'moderate',green:'easy'}[workout.color] || '')}
     />)}
 
     {picker&&<ExercisePicker

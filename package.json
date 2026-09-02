@@ -13,7 +13,8 @@
     "migrate:init-security": "node migrations/003_init_security.js",
     "migrate:workout-management": "node migrations/006_workout_management.js",
     "migrate:exercises": "node migrations/004_seed_exercises.js",
-    "migrate:exercise-ids": "node migrations/005_add_exercise_ids_to_workouts.js"
+    "migrate:exercise-ids": "node migrations/005_add_exercise_ids_to_workouts.js",
+    "migrate:workout-intensity": "node migrations/007_add_workout_intensity.js"
   },
   "dependencies": {
     "@vitejs/plugin-react": "latest",
