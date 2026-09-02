@@ -82,5 +82,27 @@ export default function StrengthExerciseCard({item,index,value,updateEntry,onRep
     </div>
     <button type="button" className="add-set" onClick={addSet}>＋ Add set</button>
     <textarea value={notes} onChange={e=>updateEntry(item,{notes:e.target.value})} placeholder="Exercise notes…" />
+
+    {(lastWorkout || lastError) && <div className="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby={`last-time-title-${item.key}`}>
+      <div className="last-time-modal">
+        <div className="modal-kicker">LAST TIME</div>
+        <h2 id={`last-time-title-${item.key}`}>{lastWorkout?.entry?.name || item.name}</h2>
+        {lastError ? <p className="last-time-empty">{lastError}</p> : <>
+          <p className="last-time-date">{new Date(lastWorkout.date + 'T12:00:00').toLocaleDateString('en-US',{weekday:'long',month:'short',day:'numeric',year:'numeric'})}</p>
+          <div className="last-time-sets">
+            {(lastWorkout.entry?.sets || []).map((set,i)=>{
+              const normalized=normalizeSet(set);
+              return <div className="last-time-set" key={i}>
+                <span>Set {i+1}</span>
+                <strong>{normalized.weight === '' ? '—' : `${normalized.weight} kg`}</strong>
+                <strong>{normalized.reps === '' ? '—' : `${normalized.reps} reps`}</strong>
+              </div>;
+            })}
+          </div>
+          {lastWorkout.entry?.notes && <div className="last-time-notes">{lastWorkout.entry.notes}</div>}
+        </>}
+        <button type="button" className="modal-close" onClick={closeLastWorkout}>Close</button>
+      </div>
+    </div>}
   </section>;
 }
